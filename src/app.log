@@ -1,4 +1,0 @@
-time="2024-12-29T00:01:36+05:00" level=fatal msg="Failed to load redis config: failed to read file redis.yaml: open redis.yaml: no such file or directory"
-time="2024-12-29T00:01:59+05:00" level=info msg="Connected to Redis"
-time="2024-12-29T00:01:59+05:00" level=info msg="Success init URL"
-time="2024-12-29T00:02:00+05:00" level=info msg="Success get JSON"
