@@ -4,21 +4,31 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
 	"src/api"
 	"src/cache"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 
 	"github.com/redis/go-redis/v9"
 )
 
 func main() {
-	sity_code := "surgut"
-	key := "6TA3N5JVQTPB4ATZCKHL238BH"
+	logger := api.Logger_init()
+	err := godotenv.Load()
+	if err != nil {
+		logger.Fatal("Error loading .env file")
+	}
+	key := os.Getenv("API_KEY")
+	sity_code := os.Getenv("SITY_CODE")
+	if key == "" || sity_code == "" {
+		log.Fatal("API_KEY or sity_code  environment variable is not set")
+	}
 	var param api.Parameters = api.Parameters{Sity_code: sity_code, Key: key, RedisKey: (fmt.Sprintf("weather_%s", sity_code))}
 
-	logger := api.Logger_init()
 	defer api.Logger_close(logger)
 
 	ctx := context.Background()
@@ -66,19 +76,20 @@ func checkCache(ctx context.Context, redisClient *redis.Client, redisKey string,
 	return nil, false, nil
 }
 
-func GetWeather(ctx context.Context, redisClient *redis.Client, param api.Parameters, url string, l *logrus.Logger) {
+func GetWeather(ctx context.Context, redisClient *redis.Client, param api.Parameters, url string, l *logrus.Logger) []byte {
 	var v []byte
 	v, isValid, err := checkCache(ctx, redisClient, param.RedisKey, param.Key, l)
 	if isValid {
-		fmt.Printf("%s-old value", v)
+		l.Printf("%s-old value", v)
 		l.Print("old value success get")
 	} else if err == nil {
 		v, err = cache.Set_weather_in_redis(ctx, redisClient, param.RedisKey, url, l)
 		if err != nil {
 			l.Fatalf("error in get weather - %v", err)
 		} else {
-			fmt.Printf("%s-new value", v)
+			l.Printf("%s-new value", v)
 			l.Print("new value success get")
 		}
 	}
+	return v
 }
