@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"src/api"
 	"src/cache"
@@ -15,7 +16,7 @@ import (
 func main() {
 	sity_code := "surgut"
 	key := "6TA3N5JVQTPB4ATZCKHL238BH"
-	var param api.Parameters = api.Parameters{Sity_code: sity_code, Key: key}
+	var param api.Parameters = api.Parameters{Sity_code: sity_code, Key: key, RedisKey: (fmt.Sprintf("weather_%s", sity_code))}
 
 	logger := api.Logger_init()
 	defer api.Logger_close(logger)
@@ -28,39 +29,23 @@ func main() {
 	}
 
 	defer redisClient.Close()
-	v, isValid, err := checkCache(ctx, redisClient, sity_code, logger)
-	if err != nil {
-		logger.Fatalf("Failed to check cache: %v", err)
-	}
-	if !isValid {
-
-		logger.Print("cache is expired or null!")
-		url := api.Init_url(param, logger)
-		value, err := cache.Set_weather_in_redis(ctx, redisClient, sity_code, url, logger)
-		if err != nil {
-			logger.Errorf("Failed to set data to cache %v", err)
-		}
-		fmt.Printf("%s-new value", value)
-	} else {
-		logger.Print("cache is ok!")
-		fmt.Printf("%s-old value", v)
-	}
+	GetWeather(ctx, redisClient, param, api.Init_url(param, logger), logger)
 }
 
-func checkCache(ctx context.Context, redisClient *redis.Client, key string, l *logrus.Logger) (string, bool, error) {
+func checkCache(ctx context.Context, redisClient *redis.Client, redisKey string, key string, l *logrus.Logger) ([]byte, bool, error) {
 
-	val, err := redisClient.Get(ctx, fmt.Sprintf("weather_%s", key)).Result()
+	val, err := redisClient.Get(ctx, redisKey).Result()
 	if err == redis.Nil {
 		l.Print("Redis in null")
-		return "", false, nil
+		return nil, false, nil
 	} else if err != nil {
-		return "", false, fmt.Errorf("error while getting from cache: %w", err)
+		return nil, false, fmt.Errorf("error while getting from cache: %w", err)
 	}
 
 	// 2. Get remaining time to live in milliseconds
 	ttl, err := redisClient.PTTL(ctx, key).Result()
 	if err != nil {
-		return "", false, fmt.Errorf("error while getting TTL of key: %w", err)
+		return nil, false, fmt.Errorf("error while getting TTL of key: %w", err)
 	}
 
 	// 3. Check time difference
@@ -71,8 +56,29 @@ func checkCache(ctx context.Context, redisClient *redis.Client, key string, l *l
 
 	// compare the expiration time with one hour ago to see if the data is fresh.
 	if keyExpirationTime.After(oneHourAgo) {
-		return val, true, nil
+		jsonRes, err := json.Marshal(val)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to marshal weather to json %w", err)
+		}
+		return jsonRes, true, nil
 	}
 
-	return "", false, nil
+	return nil, false, nil
+}
+
+func GetWeather(ctx context.Context, redisClient *redis.Client, param api.Parameters, url string, l *logrus.Logger) {
+	var v []byte
+	v, isValid, err := checkCache(ctx, redisClient, param.RedisKey, param.Key, l)
+	if isValid {
+		fmt.Printf("%s-old value", v)
+		l.Print("old value success get")
+	} else if err == nil {
+		v, err = cache.Set_weather_in_redis(ctx, redisClient, param.RedisKey, url, l)
+		if err != nil {
+			l.Fatalf("error in get weather - %v", err)
+		} else {
+			fmt.Printf("%s-new value", v)
+			l.Print("new value success get")
+		}
+	}
 }

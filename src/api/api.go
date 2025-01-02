@@ -36,6 +36,7 @@ type Weather struct {
 type Parameters struct {
 	Sity_code string
 	Key       string
+	RedisKey  string
 }
 
 // func GetWeather(sity_code string) error {

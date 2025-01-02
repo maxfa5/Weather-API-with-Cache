@@ -15,7 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var cacheTTL = 12 * time.Hour
+var cacheTTL = 1 * time.Hour
 
 // storage/redis.go
 type RedisConfig struct {
@@ -89,8 +89,7 @@ func NewClient(ctx context.Context, cfg RedisConfig) (*redis.Client, error) {
 	return db, nil
 }
 
-func Set_weather_in_redis(ctx context.Context, redisClient *redis.Client, sity_code string, url string, logger *logrus.Logger) ([]byte, error) {
-	cacheKey := fmt.Sprintf("weather_%s", sity_code)
+func Set_weather_in_redis(ctx context.Context, redisClient *redis.Client, redisKey string, url string, logger *logrus.Logger) ([]byte, error) {
 
 	weather := api.Get_weather_info(url, logger)
 	jsonData, err := json.Marshal(weather)
@@ -98,11 +97,11 @@ func Set_weather_in_redis(ctx context.Context, redisClient *redis.Client, sity_c
 		return nil, fmt.Errorf("failed to marshal weather to json %w", err)
 	}
 
-	err = redisClient.Set(ctx, cacheKey, jsonData, cacheTTL).Err()
+	err = redisClient.Set(ctx, redisKey, jsonData, cacheTTL).Err()
 	if err != nil {
 		return nil, fmt.Errorf("failed to set value in redis: %w", err)
 	}
 
-	fmt.Printf("Value successfully saved in Redis under key: %s\n", cacheKey)
+	fmt.Printf("Value successfully saved in Redis under key: %s\n", redisKey)
 	return jsonData, nil
 }
