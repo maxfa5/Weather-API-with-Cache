@@ -103,34 +103,34 @@ func Get_data(allData *WeatherData) error {
 	return nil
 }
 
-func Get_weather_info(url string, l *logrus.Logger) (new_stat Weather) {
+func Get_weather_info(url string, l *logrus.Logger) (error, Weather) {
 	resp, err := http.Get(url)
 	if err != nil {
-		l.Panic("can`t get JSON")
-		panic(err)
+		l.Print("can`t get JSON")
+		return err, Weather{}
 	}
 	defer resp.Body.Close()
 
 	resp_body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		l.Panicf("can`t get JSON, %v", err)
-		panic(err)
+		l.Printf("can`t get JSON, %v", err)
+		return err, Weather{}
 	}
 
 	var weatherData WeatherData
 	err = json.Unmarshal(resp_body, &weatherData)
 	if err != nil {
-		l.Panicf("can`t get JSON, %v", err)
-		panic(err)
+		l.Printf("can`t get JSON, %v", err)
+		return err, Weather{}
 	}
 
 	if err := Get_data(&weatherData); err != nil {
-		l.Panicf("error processing data: %v", err)
-		panic(err)
+		l.Printf("error processing data: %v", err)
+		return err, Weather{}
 	}
 	l.Print("Success get JSON")
 
-	return Weather{
+	return nil, Weather{
 		City:        weatherData.Address,
 		Temperature: fmt.Sprintf("%.2f", weatherData.Days[0].Temp),
 		Date:        weatherData.Days[0].Datetime,

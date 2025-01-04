@@ -91,7 +91,11 @@ func NewClient(ctx context.Context, cfg RedisConfig) (*redis.Client, error) {
 
 func Set_weather_in_redis(ctx context.Context, redisClient *redis.Client, redisKey string, url string, logger *logrus.Logger) ([]byte, error) {
 
-	weather := api.Get_weather_info(url, logger)
+	err, weather := api.Get_weather_info(url, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get weather %w", err)
+	}
+
 	jsonData, err := json.Marshal(weather)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal weather to json %w", err)

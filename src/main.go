@@ -1,15 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"src/api"
 	"src/cache"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 
@@ -23,11 +25,10 @@ func main() {
 		logger.Fatal("Error loading .env file")
 	}
 	key := os.Getenv("API_KEY")
-	sity_code := os.Getenv("SITY_CODE")
-	if key == "" || sity_code == "" {
-		log.Fatal("API_KEY or sity_code  environment variable is not set")
+	if key == "" {
+		log.Fatal("API_KEY environment variable is not set")
 	}
-	var param api.Parameters = api.Parameters{Sity_code: sity_code, Key: key, RedisKey: (fmt.Sprintf("weather_%s", sity_code))}
+	var param api.Parameters = api.Parameters{Sity_code: "", Key: key, RedisKey: ""}
 
 	defer api.Logger_close(logger)
 
@@ -39,6 +40,20 @@ func main() {
 	}
 
 	defer redisClient.Close()
+
+	r := mux.NewRouter()
+	r.HandleFunc("/weather/{city}", func(w http.ResponseWriter, r *http.Request) {
+		handleWeatherRequest(w, r, redisClient, param, logger)
+	})
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // Default port if not specified in env vars
+	}
+
+	logger.Infof("Starting server on port: %s", port)
+	http.ListenAndServe(":"+port, r)
+
 	GetWeather(ctx, redisClient, param, api.Init_url(param, logger), logger)
 }
 
@@ -52,31 +67,51 @@ func checkCache(ctx context.Context, redisClient *redis.Client, redisKey string,
 		return nil, false, fmt.Errorf("error while getting from cache: %w", err)
 	}
 
-	// 2. Get remaining time to live in milliseconds
 	ttl, err := redisClient.PTTL(ctx, key).Result()
 	if err != nil {
 		return nil, false, fmt.Errorf("error while getting TTL of key: %w", err)
 	}
 
-	// 3. Check time difference
 	oneHourAgo := time.Now().Add(-time.Hour)
 
-	// calculate the key's expiration time by adding the remaining ttl to current time.
 	keyExpirationTime := time.Now().Add(ttl)
 
-	// compare the expiration time with one hour ago to see if the data is fresh.
 	if keyExpirationTime.After(oneHourAgo) {
-		jsonRes, err := json.Marshal(val)
-		if err != nil {
-			return nil, false, fmt.Errorf("failed to marshal weather to json %w", err)
-		}
-		return jsonRes, true, nil
+		return []byte(val), true, nil
 	}
 
 	return nil, false, nil
 }
 
-func GetWeather(ctx context.Context, redisClient *redis.Client, param api.Parameters, url string, l *logrus.Logger) []byte {
+// handleWeatherRequest processes weather requests for a specific city
+func handleWeatherRequest(w http.ResponseWriter, r *http.Request, redisClient *redis.Client, param api.Parameters, logger *logrus.Logger) {
+
+	vars := mux.Vars(r)
+	city := vars["city"]
+
+	if city == "" {
+		http.Error(w, "City is required", http.StatusBadRequest)
+		return
+	}
+	param.Sity_code = city
+	param.RedisKey = fmt.Sprintf("weather_%s", city)
+
+	data, err := GetWeather(context.Background(), redisClient, param, api.Init_url(param, logger), logger)
+	if err != nil {
+		logger.Printf("Failed to get weather data: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		bytes.NewBufferString(`{"error": "Failed to get weather data"}`).WriteTo(w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+//GetWeather: Gets the weather from cache or external api
+func GetWeather(ctx context.Context, redisClient *redis.Client, param api.Parameters, url string, l *logrus.Logger) ([]byte, error) {
 	var v []byte
 	v, isValid, err := checkCache(ctx, redisClient, param.RedisKey, param.Key, l)
 	if isValid {
@@ -90,6 +125,8 @@ func GetWeather(ctx context.Context, redisClient *redis.Client, param api.Parame
 			l.Printf("%s-new value", v)
 			l.Print("new value success get")
 		}
+	} else {
+		return nil, err
 	}
-	return v
+	return v, nil
 }
