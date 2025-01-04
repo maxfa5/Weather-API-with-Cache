@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-
 	"src/api"
 	"time"
 
@@ -39,6 +38,27 @@ func LoadRedisConfig(filename string) (RedisConfig, error) {
 		return config, fmt.Errorf("failed to unmarshal yaml file %v: %w", filename, err)
 	}
 	return config, nil
+}
+
+func GetWeather(ctx context.Context, redisClient *redis.Client, param api.Parameters, url string, l *logrus.Logger) ([]byte, error) {
+	var v []byte
+	v, isValid, err := CheckCache(ctx, redisClient, param.RedisKey, param.Key, l)
+	if isValid {
+		l.Printf("%s-old value", v)
+		l.Print("old value success get")
+	} else if err == nil {
+		v, err = Set_weather_in_redis(ctx, redisClient, param.RedisKey, url, l)
+		if err != nil {
+			l.Printf("error in get weather - %v", err)
+			return nil, err
+		} else {
+			l.Printf("%s-new value", v)
+			l.Print("new value success get")
+		}
+	} else {
+		return nil, err
+	}
+	return v, nil
 }
 
 // storage/redis.go
@@ -93,19 +113,48 @@ func Set_weather_in_redis(ctx context.Context, redisClient *redis.Client, redisK
 
 	err, weather := api.Get_weather_info(url, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get weather %w", err)
+		logger.Printf("failed to get weather %v", err)
+		return nil, err
 	}
 
 	jsonData, err := json.Marshal(weather)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal weather to json %w", err)
+		logger.Printf("failed to marshal weather to json %v", err)
+		return nil, err
 	}
 
 	err = redisClient.Set(ctx, redisKey, jsonData, cacheTTL).Err()
 	if err != nil {
-		return nil, fmt.Errorf("failed to set value in redis: %w", err)
+		logger.Printf("failed to set value in redis: %v", err)
+		return nil, err
 	}
 
 	fmt.Printf("Value successfully saved in Redis under key: %s\n", redisKey)
 	return jsonData, nil
+}
+
+func CheckCache(ctx context.Context, redisClient *redis.Client, redisKey string, key string, l *logrus.Logger) ([]byte, bool, error) {
+
+	val, err := redisClient.Get(ctx, redisKey).Result()
+	if err == redis.Nil {
+		l.Print("Redis in null")
+		return nil, false, nil
+	} else if err != nil {
+		return nil, false, fmt.Errorf("error while getting from cache: %w", err)
+	}
+
+	ttl, err := redisClient.PTTL(ctx, key).Result()
+	if err != nil {
+		return nil, false, fmt.Errorf("error while getting TTL of key: %w", err)
+	}
+
+	oneHourAgo := time.Now().Add(-time.Hour)
+
+	keyExpirationTime := time.Now().Add(ttl)
+
+	if keyExpirationTime.After(oneHourAgo) {
+		return []byte(val), true, nil
+	}
+
+	return nil, false, nil
 }

@@ -1,4 +1,6 @@
 #  sudo apt install redis-server
+# or
+# sudo service redis-server start
 all: build
 
 run:
