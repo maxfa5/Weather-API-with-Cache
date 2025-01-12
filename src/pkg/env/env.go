@@ -8,8 +8,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func LoadEnv(logger *logrus.Logger) error {
-	if err := godotenv.Load(); err != nil {
+func LoadEnv(logger *logrus.Logger, path_toenv string) error {
+	if err := godotenv.Load(path_toenv); err != nil {
 		logger.Fatalf("Error loading .env file: %v", err)
 		return err
 	}

@@ -4,7 +4,7 @@
 all: build
 
 run:
-	go run main.go
+	go run ./cmd/wethaer_api_with_cache/main.go
 
 redis_create:
 	sudo systemctl start redis

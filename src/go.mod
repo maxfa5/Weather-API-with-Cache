@@ -1,4 +1,4 @@
-module src
+module weather-API
 
 go 1.18
 

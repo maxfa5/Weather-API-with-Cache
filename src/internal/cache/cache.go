@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"src/api"
+	"net/http"
 	"time"
+	"weather-API/internal/api"
 
+	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 
@@ -157,4 +159,34 @@ func CheckCache(ctx context.Context, redisClient *redis.Client, redisKey string,
 	}
 
 	return nil, false, nil
+}
+
+// HandleWeatherRequest processes weather requests for a specific city
+func HandleWeatherRequest(w http.ResponseWriter, r *http.Request, redisClient *redis.Client, param api.Parameters, logger *logrus.Logger) {
+
+	vars := mux.Vars(r)
+	city := vars["city"]
+
+	if city == "" {
+		http.Error(w, "City is required", http.StatusBadRequest)
+		return
+	}
+	param.Sity_code = city
+	param.RedisKey = fmt.Sprintf("weather_%s", city)
+
+	data, err := GetWeather(context.Background(), redisClient, param, api.Init_url(param, logger), logger)
+	if err != nil {
+		logger.Errorf("Failed to get weather data: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		response := `{"error": "Failed to get weather data"}`
+		w.Write([]byte(response))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(data); err != nil {
+		logger.Errorf("Failed to write response: %v", err)
+	}
 }
