@@ -1,7 +1,6 @@
 package config
 
 import (
-	"log"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -19,7 +18,7 @@ func LoadEnv(logger *logrus.Logger, path_toenv string) error {
 func GetAPIKey(logger *logrus.Logger) string {
 	key := os.Getenv("API_KEY")
 	if key == "" {
-		log.Fatal("API_KEY environment variable is not set")
+		logger.Fatal("API_KEY environment variable is not set")
 	}
 	return key
 }
